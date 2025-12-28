@@ -1,5 +1,4 @@
 #include <windows.h>
-#include <tchar.h>
 #include <strsafe.h>
 #include <Psapi.h>
 #include <fstream>
@@ -7,6 +6,7 @@
 #include <filesystem>
 #include <set>
 #include "contrib/minizip/zip.h"
+#include "shlobj_core.h"
 
 const WCHAR* SvcName = TEXT("BillionsSvc");
 const WCHAR* ProcName = TEXT("TheyAreBillions.exe");
@@ -41,29 +41,26 @@ uint8_t gbackupsSize = 5;
 // Return value:
 //   None, defaults to 0 (zero)
 //
-int __cdecl _tmain(int argc, char* argv[]) {
+int main() 
+{
 	// If command-line parameter is "install", install the service. 
 	// Otherwise, the service is probably being started by the SCM.
 	// Get a handle to the SCM database. 
-	while (!IsDebuggerPresent()) {
-		Sleep(1000);
-	}
+	//while (!IsDebuggerPresent()) {
+	//	Sleep(1000);
+	//}
 
-	if (argc > 1) {
-		int temp = atoi(argv[1]);
-		gbackupsSize = temp > UINT8_MAX ? UINT8_MAX : static_cast<uint8_t>(temp);
-	}
-
-	job();
+	//job();
 
 	SC_HANDLE schSCManager;
 
 	schSCManager = OpenSCManager(
 		NULL,                    // local computer
 		NULL,                    // servicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
+		SC_MANAGER_CREATE_SERVICE);  // full access rights 
 
-	if (NULL == schSCManager) {
+	if (NULL == schSCManager) 
+	{
 		printf("OpenSCManager failed (%ld)\n", GetLastError());
 		return 0;
 	}
@@ -74,14 +71,17 @@ int __cdecl _tmain(int argc, char* argv[]) {
 	schService = OpenService(
 		schSCManager,         // SCM database 
 		SvcName,            // name of service 
-		SERVICE_ALL_ACCESS);  // full access 
+		SERVICE_QUERY_STATUS);  // full access 
 
-	if (schService == NULL) {
+	if (schService == NULL)
+	{
 		DWORD err = GetLastError();
-		if (err == ERROR_SERVICE_DOES_NOT_EXIST) {
+		if (err == ERROR_SERVICE_DOES_NOT_EXIST) 
+		{
 			SvcInstall(schSCManager);
 		}
-		else {
+		else 
+		{
 			printf("OpenService failed (%ld)\n", err);
 			CloseServiceHandle(schSCManager);
 		}
@@ -116,11 +116,13 @@ int __cdecl _tmain(int argc, char* argv[]) {
 // Return value:
 //   None
 //
-void SvcInstall(SC_HANDLE& schSCManager) {
+void SvcInstall(SC_HANDLE& schSCManager) 
+{
 	SC_HANDLE schService;
 	TCHAR szUnquotedPath[MAX_PATH];
 
-	if (!GetModuleFileName(NULL, szUnquotedPath, MAX_PATH)) {
+	if (!GetModuleFileName(NULL, szUnquotedPath, MAX_PATH))
+	{
 		printf("Cannot install service (%ld)\n", GetLastError());
 		return;
 	}
@@ -149,7 +151,8 @@ void SvcInstall(SC_HANDLE& schSCManager) {
 		NULL,                      // LocalSystem account 
 		NULL);                     // no password 
 
-	if (schService == NULL) {
+	if (schService == NULL) 
+	{
 		printf("CreateService failed (%ld)\n", GetLastError());
 		CloseServiceHandle(schSCManager);
 		return;
@@ -170,7 +173,8 @@ void SvcInstall(SC_HANDLE& schSCManager) {
 // Return value:
 //   None.
 //
-void WINAPI SvcMain() {
+void WINAPI SvcMain() 
+{
 	// Register the handler function for the service
 
 	gSvcStatusHandle = RegisterServiceCtrlHandler(
@@ -208,7 +212,8 @@ void WINAPI SvcMain() {
 // Return value:
 //   None
 //
-void SvcInit() {
+void SvcInit() 
+{
 	// TO_DO: Declare and set any required variables.
 	//   Be sure to periodically call ReportSvcStatus() with 
 	//   SERVICE_START_PENDING. If initialization fails, call
@@ -244,7 +249,8 @@ void SvcInit() {
 //
 void ReportSvcStatus(DWORD dwCurrentState,
 	DWORD dwWin32ExitCode,
-	DWORD dwWaitHint) {
+	DWORD dwWaitHint) 
+{
 	static DWORD dwCheckPoint = 1;
 
 	// Fill in the SERVICE_STATUS structure.
@@ -277,26 +283,29 @@ void ReportSvcStatus(DWORD dwCurrentState,
 // Return value:
 //   None
 //
-void WINAPI SvcCtrlHandler(DWORD dwCtrl) {
+void WINAPI SvcCtrlHandler(DWORD dwCtrl) 
+{
 	// Handle the requested control code. 
 
-	switch (dwCtrl) {
-		case SERVICE_CONTROL_STOP:
-			ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+	switch (dwCtrl) 
+	{
+	case SERVICE_CONTROL_STOP:
+		ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
-			// Signal the service to stop.
+		// Signal the service to stop.
 
-			gStopPromise.set_value();
+		gStopPromise.set_value();
 
-			return;
+		return;
 
-		default:
-			break;
+	default:
+		break;
 	}
 
 }
 
-bool CheckIfProcessorRunning() {
+HANDLE GetProcessHandle()
+{
 	TCHAR szProcessName[MAX_PATH];
 	DWORD aProcesses[512], cbNeeded = 0;
 	HMODULE hMod;
@@ -304,84 +313,142 @@ bool CheckIfProcessorRunning() {
 	EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded);
 	const DWORD szProc = cbNeeded / sizeof(DWORD);
 
-	for (unsigned int i = 0; i < szProc; ++i) {
-		if (HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, aProcesses[i])) {
-			if (EnumProcessModulesEx(hProcess, &hMod, sizeof(hMod), &cbNeeded, 0)) {
+	for (unsigned int i = 0; i < szProc; ++i)
+	{
+		if (HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, aProcesses[i]))
+		{
+			if (EnumProcessModulesEx(hProcess, &hMod, sizeof(hMod), &cbNeeded, 0))
+			{
 				GetModuleBaseName(hProcess, hMod, szProcessName, sizeof(szProcessName) / sizeof(TCHAR));
-				if (wcscmp(szProcessName, ProcName) == 0) {
-					CloseHandle(hProcess);
-					return true;
+				if (wcscmp(szProcessName, ProcName) == 0)
+				{
+					return hProcess;
 				}
 			}
-
-			CloseHandle(hProcess);
 		}
+	}
+	return nullptr;
+}
+
+PWSTR GetUserFolder()
+{
+	PWSTR buf = nullptr;
+	if (HANDLE hProcess = GetProcessHandle())
+	{
+		HANDLE hToken = nullptr;
+		if (OpenProcessToken(hProcess, TOKEN_QUERY, &hToken))
+		{
+			DWORD dwBufferSize = 0;
+			GetTokenInformation(hToken, TokenUser, nullptr, 0, &dwBufferSize);
+			if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				PTOKEN_USER pTokenUser = (PTOKEN_USER)malloc(dwBufferSize);
+				if (GetTokenInformation(hToken, TokenUser, pTokenUser, dwBufferSize, &dwBufferSize))
+				{
+					SHGetKnownFolderPath(FOLDERID_Documents, 0, hToken, &buf);
+				}
+				free(pTokenUser);
+			}
+			CloseHandle(hToken);
+		}
+		CloseHandle(hProcess);
+	}
+	return buf;
+}
+
+bool CheckIfProcessRunning() 
+{
+	if(HANDLE hProc = GetProcessHandle())
+	{
+		CloseHandle(hProc);
+		return true;
 	}
 
 	return false;
 }
 
-struct cmdPr {
-	bool operator()(const std::string& Left, const std::string& Right) const {
-		return stringToTime(Left) < stringToTime(Right);
+struct cmdPr 
+{
+	bool operator()(const std::string& Left, const std::string& Right) const 
+	{
+		return stringToTime(std::filesystem::path(Left).filename().string()) < stringToTime(std::filesystem::path(Right).filename().string());
 	}
 };
 
-void job() {
-	namespace fs = std::filesystem;
+void job() 
+{
+	using namespace std::filesystem;
 
-	WCHAR* envBuf = (LPWSTR)malloc(MAX_PATH * sizeof(WCHAR));
-	const WCHAR* SavePath = GetEnvironmentVariable(L"billionspath", envBuf, MAX_PATH) != 0 ? envBuf : TEXT("C:\\Users\\igogo\\Document s\\My Games\\They Are Billions\\Saves");
+	while(!CheckIfProcessRunning())
+	{
+		if (!gStopFuture.valid())
+		{
+			return;
+		}
+		Sleep(1000);
+	}
+
+	wchar_t* userBuf = GetUserFolder();
+	std::wstring userPath(userBuf);
+	userPath += L"\\My Games\\They Are Billions\\Saves";
+	CoTaskMemFree(userBuf);
+
+	wchar_t* envBuf = (wchar_t*)malloc(MAX_PATH * sizeof(wchar_t));
+	std::wstring SavePath = GetEnvironmentVariable(L"billionspath", envBuf, MAX_PATH) != 0 ? envBuf : userPath;
 	free(envBuf);
 
-	const fs::path saveDir(SavePath), backupDir = saveDir.parent_path();
-	fs::directory_iterator backupIt(backupDir);
-	fs::file_time_type tWrite;
+	const path saveDir(SavePath), backupDir = saveDir.parent_path();
 	std::set<std::string, cmdPr> sBackups;
-	std::set<fs::path> backupFiles;
-	const std::string backupPrefix = backupDir.string() + "//backup_";
+
+	for (auto& entry : directory_iterator(backupDir))
+	{
+		if (entry.is_regular_file() && entry.path().extension() == ".zip")
+		{
+			if (std::string backupName = entry.path().filename().string(); backupName.starts_with("backup_"))
+			{
+				sBackups.emplace(entry.path().string());
+				if (sBackups.size() > gbackupsSize)
+				{
+					remove(*sBackups.begin());
+					sBackups.erase(sBackups.begin());
+				}
+			}
+		}
+	}
+
+	const std::string backupPrefix = backupDir.string() + "\\backup_";
+	std::set<path> backupFiles;
+	file_time_type tWrite;
 	std::string backupPath;
 	std::fstream f;
 
-	while (!backupIt._At_end()) {
-		if (auto& entry = *backupIt; entry.is_regular_file() && entry.path().extension() == ".zip") {
-			if (std::string backupName = entry.path().filename().string(); backupName.starts_with("backup_")) {
-				if (sBackups.size() >= gbackupsSize) {
-					if (stringToTime(backupName) > stringToTime(*sBackups.begin())) {
-						sBackups.erase(sBackups.begin());
-					}
-					else {
-						continue;
-					}
-				}
-				sBackups.emplace(entry.path().string());
-			}
-		}
-		backupIt++;
-	}
-
-	while (gStopFuture.valid()) {
-		if (CheckIfProcessorRunning()) {
+	while (gStopFuture.valid()) 
+	{
+		if (CheckIfProcessRunning())
+		{
 			bool write = false;
-			fs::directory_iterator savIt(saveDir);
 
-			while (!savIt._At_end()) {
-				const auto& entry = *savIt;
-				if (!backupFiles.contains(entry.path())) {
+			for (auto& entry : directory_iterator(saveDir))
+			{
+				if (!backupFiles.contains(entry.path())) 
+				{
 					backupFiles.emplace(entry.path());
 				}
 
-				if (entry.is_regular_file() && entry.path().extension() == ".zxsav") {
-					if (const auto t = entry.last_write_time(); t > tWrite) {
+				if (entry.is_regular_file() && entry.path().extension() == ".zxsav") 
+				{
+					if (const auto t = entry.last_write_time(); t > tWrite) 
+					{
 						tWrite = t;
 						write = true;
 					}
 				}
-				savIt++;
 			}
-			if (write) {
-				if (sBackups.size() >= gbackupsSize) {
-					fs::remove(*sBackups.begin());
+			if (write) 
+			{
+				if (sBackups.size() >= gbackupsSize) 
+				{
+					remove(*sBackups.begin());
 					sBackups.erase(sBackups.begin());
 				}
 
@@ -391,12 +458,15 @@ void job() {
 				char* buf = (char*)malloc(bufSz);
 				zipFile zf = zipOpen(backupPath.c_str(), 0);
 
-				for (auto& Save : backupFiles) {
+				for (auto& Save : backupFiles) 
+				{
 					f.open(Save.string(), std::ios::in | std::ios::binary);
-					if (f.is_open()) {
+					if (f.is_open()) 
+					{
 						zipOpenNewFileInZip(zf, Save.filename().string().c_str(), NULL, NULL, 0, NULL, 0, NULL, 0, Z_NO_COMPRESSION);
 
-						do {
+						do 
+						{
 							f.read(buf, bufSz);
 							readSz = static_cast<unsigned int>(f.gcount());
 							zipWriteInFileInZip(zf, buf, readSz);
@@ -406,7 +476,8 @@ void job() {
 						zipCloseFileInZip(zf);
 						f.close();
 					}
-					else {
+					else 
+					{
 						backupFiles.erase(Save);
 					}
 				}
@@ -416,19 +487,20 @@ void job() {
 				write = false;
 				free(buf);
 			}
-
 		}
-		Sleep(3000);
+		Sleep(1000);
 	}
 }
 
-std::string timeToString(const std::filesystem::file_time_type& time) {
+std::string timeToString(const std::filesystem::file_time_type& time) 
+{
 	using namespace std::chrono;
 	zoned_time zTime(current_zone(), utc_clock::to_sys(file_clock::to_utc(time)));
 	return std::format("{:%H-%M-%OS_%d-%m-%y}", zTime);
 }
 
-time_t stringToTime(const std::string& time) {
+time_t stringToTime(const std::string& time) 
+{
 	tm tm = {};
 	tm.tm_hour = atoi(time.substr(7, 2).c_str());
 	tm.tm_min = atoi(time.substr(10, 2).c_str());
